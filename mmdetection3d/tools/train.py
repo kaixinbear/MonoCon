@@ -106,6 +106,8 @@ def parse_args():
 
 def main():
     args = parse_args()
+    args.seed = 2
+    args.deterministic = True
 
     cfg = Config.fromfile(args.config)
     if args.cfg_options is not None:
@@ -189,7 +191,7 @@ def main():
     logger.info(f'Distributed training: {distributed}')
     logger.info(f'Config:\n{cfg.pretty_text}')
 
-    # set random seeds
+    # set random seeds as default
     seed = init_random_seed(args.seed)
     logger.info(f'Set random seed to {seed}, '
                 f'deterministic: {args.deterministic}')
