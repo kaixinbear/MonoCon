@@ -7,7 +7,7 @@ from spconv.pytorch.hash import HashTable
 import time
 
 from mmdet.core import multi_apply
-from gaussian_target_3D import gen_gaussian_3D_target, bin_depths, bin_to_depth, \
+from mmdet3d.models.utils.gaussian_target_3D import gen_gaussian_3D_target, bin_depths, bin_to_depth, \
     get_local_maximum, get_topk_from_3D_heatmap, transpose_and_gather_feat 
 
 from mmcv.cnn import bias_init_with_prob, normal_init
@@ -15,6 +15,7 @@ from mmcv.runner import force_fp32
 
 from mmdet.core import multi_apply
 from mmdet.models.builder import HEADS, build_loss
+import numpy as np
 
 INF = 1e8
 EPS = 1e-12
@@ -599,44 +600,3 @@ class M3D_HeatMap_head(nn.Module):
             return losses
         else:
             raise NotImplementedError
-
-if __name__ == '__main__':
-    feat_H = 96 // 4
-    feat_W = 312 // 4
-    # feature_map = torch.randn(8, 64, feat_H, feat_W, 40).cuda()
-    # mask = torch.gt(torch.randn([8, feat_H, feat_W, 40]).cuda(), 2)
-    # review_feature = feature_map.permute(0, 2, 3, 4, 1).contiguous()
-    # features = review_feature[mask] # your features with shape [N, num_channels]
-    # indices = torch.nonzero(mask).int().contiguous() # your indices/coordinates with shape [N, ndim + 1], batch index must be put in indices[:, 0]
-
-    # sparse_rate = indices.shape[0] / (feature_map.shape[2] * feature_map.shape[3] * feature_map.shape[4])
-    # print("sparse_rate", sparse_rate)
-
-    # spatial_shape = feature_map.shape[2:] # spatial shape of your sparse tensor, spatial_shape[i] is shape of indices[:, 1 + i].
-    # batch_size = 8 # batch size of your sparse tensor.
-    # x = [spconv.SparseConvTensor(features, indices, spatial_shape, batch_size)]
-    # # x_dense_NCHW = x.dense() # convert sparse tensor to dense NCHW tensor.
-
-    # net = M3D_HeatMap_head(in_channel=64, feat_channel=64, num_classes=3).cuda()
-
-    # time_spconv = 0
-    # for _ in range(50):
-    #     torch.cuda.synchronize()
-    #     start = time.time()
-    #     out = net(x)
-    #     torch.cuda.synchronize()
-    #     end = time.time()
-    #     time_spconv += end - start
-
-    # # print("output shape", out.dense().shape)
-    # print("average time", time_spconv / 50)
-
-    # '''
-    #     24 * 78 * 40 的voxel分辨率, 稀疏率为18%时, head显存占用4G, 用时14ms
-    #     48 * 156 * 40 的voxel分辨率, 稀疏率为18%时, head显存占用11G, 用时41ms
-    #     96 * 312 * 40 的voxel分辨率, 稀疏率为18%时, out of memory.
-    # '''
-
-    # # generate pseudo gt;
-    # # from gt to form target_label
-    # # decode 3D BBoxes.

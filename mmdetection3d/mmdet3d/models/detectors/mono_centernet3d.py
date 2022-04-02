@@ -179,12 +179,15 @@ class CenterNetMono3DDownSampling16x(SingleStageDetector):
         self.conv1 = nn.Sequential(
             nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU())
-
-        self.conv2 = nn.Sequential(
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU())
+            nn.ReLU(),           
+        )
+
 
     def forward_train(self,
                       img,
@@ -202,7 +205,6 @@ class CenterNetMono3DDownSampling16x(SingleStageDetector):
                       **kwargs):
         x = self.extract_feat(img)
         x = [self.conv1(x[0])]
-        x = [self.conv2(x[0])]
         losses = self.bbox_head.forward_train(x, img_metas, gt_bboxes,
                                               gt_labels, gt_bboxes_3d,
                                               gt_labels_3d, centers2d, depths,
@@ -214,7 +216,6 @@ class CenterNetMono3DDownSampling16x(SingleStageDetector):
     def simple_test(self, img, img_metas, rescale=False):
         x = self.extract_feat(img)
         x = [self.conv1(x[0])]
-        x = [self.conv2(x[0])]
         outs = self.bbox_head(x)
         bbox_outputs = self.bbox_head.get_bboxes(
             *outs, img_metas, rescale=rescale)

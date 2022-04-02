@@ -12,11 +12,11 @@ from .ssd3dnet import SSD3DNet
 from .votenet import VoteNet
 from .voxelnet import VoxelNet
 from .mono_centernet3d import CenterNetMono3D
-
+from .heat3d_mono import HeatMap_3D_Mono
 
 __all__ = [
     'Base3DDetector', 'VoxelNet', 'DynamicVoxelNet', 'MVXTwoStageDetector',
     'DynamicMVXFasterRCNN', 'MVXFasterRCNN', 'PartA2', 'VoteNet', 'H3DNet',
     'CenterPoint', 'SSD3DNet', 'ImVoteNet', 'SingleStageMono3DDetector',
-    'FCOSMono3D', 'CenterNetMono3D'
+    'FCOSMono3D', 'CenterNetMono3D', 'HeatMap_3D_Mono'
 ]

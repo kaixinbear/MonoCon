@@ -16,7 +16,8 @@
             },
             "justMyCode":false,
             "args": [
-                "configs/monocon/monocon_dla34_200e_kitti.py", 
+                // "configs/monocon/monocon_dla34_200e_kitti.py", 
+                "configs/m3d_heatmap/m3d_heatmap3d_dla34_200e_kitti.py",
                 "--work-dir", "./tmp_work_dir"
 
                 // "--ckpt", "../pretrain_model/checkpoint_epoch_70.pth",

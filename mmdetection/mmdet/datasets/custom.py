@@ -234,7 +234,12 @@ class CustomDataset(Dataset):
 
         img_info = self.data_infos[idx]
         ann_info = self.get_ann_info(idx)
-        results = dict(img_info=img_info, ann_info=ann_info)
+        if 'depth_map' in ann_info.keys():
+            depth_map = ann_info['depth_map']
+            ann_info.pop('depth_map')
+            results = dict(img_info=img_info, ann_info=ann_info, depth_map=depth_map, img_fields=['depth_map', 'img'])
+        else:
+            results = dict(img_info=img_info, ann_info=ann_info)
         if self.proposals is not None:
             results['proposals'] = self.proposals[idx]
         self.pre_pipeline(results)

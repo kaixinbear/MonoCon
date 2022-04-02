@@ -73,6 +73,8 @@ class LoadImageFromFile:
         results['img_shape'] = img.shape
         results['ori_shape'] = img.shape
         results['img_fields'] = ['img']
+        if 'depth_map' in results.keys():
+            results['img_fields'].append('depth_map')
         return results
 
     def __repr__(self):

@@ -1,5 +1,5 @@
 model = dict(
-    type='CenterNetMono3D',
+    type='HeatMap_3D_Mono',
     pretrained=True,
     backbone=dict(type='DLA', depth=34, norm_cfg=dict(type='BN')),
     neck=dict(
@@ -8,8 +8,15 @@ model = dict(
         scales_list=(1, 2, 4, 8),
         start_level=2,
         norm_cfg=dict(type='BN')),
+    feat_2d_to_3d=dict(
+        input_channel=64, output_channel=64, depth_bins=80, num_classes=3),
+    loss_2d=dict(
+        loss_center_heatmap=dict(
+            type='CenterNetGaussianFocalLoss', loss_weight=1.0),
+        loss_wh=dict(type='L1Loss', loss_weight=0.1),
+        loss_offset=dict(type='L1Loss', loss_weight=1.0)),
     bbox_head=dict(
-        type='MonoConHead',
+        type='M3D_HeatMap_head',
         in_channel=64,
         feat_channel=64,
         num_classes=3,
@@ -18,19 +25,15 @@ model = dict(
             type='CenterNetGaussianFocalLoss', loss_weight=1.0),
         loss_wh=dict(type='L1Loss', loss_weight=0.1),
         loss_offset=dict(type='L1Loss', loss_weight=1.0),
-        loss_center2kpt_offset=dict(type='L1Loss', loss_weight=1.0),
-        loss_kpt_heatmap=dict(
-            type='CenterNetGaussianFocalLoss', loss_weight=1.0),
-        loss_kpt_heatmap_offset=dict(type='L1Loss', loss_weight=1.0),
+        loss_center2d_to_3d_offset=dict(type='L1Loss', loss_weight=1.0),
         loss_dim=dict(type='DimAwareL1Loss', loss_weight=1.0),
-        loss_depth=dict(
-            type='LaplacianAleatoricUncertaintyLoss', loss_weight=1.0),
+        loss_depth_offset=dict(type='L1Loss', loss_weight=1.0),
         loss_alpha_cls=dict(
             type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
         loss_alpha_reg=dict(type='L1Loss', loss_weight=1.0)),
     train_cfg=None,
     test_cfg=dict(topk=30, local_maximum_kernel=3, max_per_img=30, thresh=0.4))
-dataset_type = 'KittiMonoDatasetMonoCon'
+dataset_type = 'KittiMonoDatasetHeatmap3D'
 data_root = 'data/kitti/'
 class_names = ['Pedestrian', 'Cyclist', 'Car']
 input_modality = dict(
@@ -53,7 +56,7 @@ train_pipeline = [
         with_label_3d=True,
         with_bbox_depth=True),
     dict(
-        type='PhotoMetricDistortion',
+        type='PhotoMetricDistortionImage',
         brightness_delta=32,
         contrast_range=(0.5, 1.5),
         saturation_range=(0.5, 1.5),
@@ -61,18 +64,19 @@ train_pipeline = [
     dict(type='RandomShiftMonoCon', shift_ratio=0.5, max_shift_px=32),
     dict(type='RandomFlipMonoCon', flip_ratio_bev_horizontal=0.5),
     dict(
-        type='Normalize',
+        type='NormalizeImage',
         mean=[123.675, 116.28, 103.53],
         std=[58.395, 57.12, 57.375],
         to_rgb=True),
     dict(type='Pad', size_divisor=32),
+    dict(type='DownsampleDepthMap', DOWNSAMPLE_FACTOR=4),
     dict(
         type='DefaultFormatBundle3D',
         class_names=['Pedestrian', 'Cyclist', 'Car']),
     dict(
         type='Collect3D',
         keys=[
-            'img', 'gt_bboxes', 'gt_labels', 'gt_bboxes_ignore',
+            'depth_map', 'img', 'gt_bboxes', 'gt_labels', 'gt_bboxes_ignore',
             'gt_bboxes_3d', 'gt_labels_3d', 'centers2d', 'depths',
             'gt_kpts_2d', 'gt_kpts_valid_mask'
         ],
@@ -93,7 +97,7 @@ test_pipeline = [
         transforms=[
             dict(type='RandomFlipMonoCon'),
             dict(
-                type='Normalize',
+                type='NormalizeImage',
                 mean=[123.675, 116.28, 103.53],
                 std=[58.395, 57.12, 57.375],
                 to_rgb=True),
@@ -109,7 +113,7 @@ data = dict(
     samples_per_gpu=8,
     workers_per_gpu=4,
     train=dict(
-        type='KittiMonoDatasetMonoCon',
+        type='KittiMonoDatasetHeatmap3D',
         data_root='data/kitti/',
         ann_file='data/kitti/kitti_infos_train_mono3d.coco.json',
         info_file='data/kitti/kitti_infos_train.pkl',
@@ -130,7 +134,7 @@ data = dict(
                 with_label_3d=True,
                 with_bbox_depth=True),
             dict(
-                type='PhotoMetricDistortion',
+                type='PhotoMetricDistortionImage',
                 brightness_delta=32,
                 contrast_range=(0.5, 1.5),
                 saturation_range=(0.5, 1.5),
@@ -138,20 +142,21 @@ data = dict(
             dict(type='RandomShiftMonoCon', shift_ratio=0.5, max_shift_px=32),
             dict(type='RandomFlipMonoCon', flip_ratio_bev_horizontal=0.5),
             dict(
-                type='Normalize',
+                type='NormalizeImage',
                 mean=[123.675, 116.28, 103.53],
                 std=[58.395, 57.12, 57.375],
                 to_rgb=True),
             dict(type='Pad', size_divisor=32),
+            dict(type='DownsampleDepthMap', DOWNSAMPLE_FACTOR=4),
             dict(
                 type='DefaultFormatBundle3D',
                 class_names=['Pedestrian', 'Cyclist', 'Car']),
             dict(
                 type='Collect3D',
                 keys=[
-                    'img', 'gt_bboxes', 'gt_labels', 'gt_bboxes_ignore',
-                    'gt_bboxes_3d', 'gt_labels_3d', 'centers2d', 'depths',
-                    'gt_kpts_2d', 'gt_kpts_valid_mask'
+                    'depth_map', 'img', 'gt_bboxes', 'gt_labels',
+                    'gt_bboxes_ignore', 'gt_bboxes_3d', 'gt_labels_3d',
+                    'centers2d', 'depths', 'gt_kpts_2d', 'gt_kpts_valid_mask'
                 ],
                 meta_keys=('filename', 'ori_shape', 'img_shape', 'lidar2img',
                            'pad_shape', 'scale_factor', 'flip',
@@ -175,7 +180,7 @@ data = dict(
         max_occlusion=2,
         box_type_3d='Camera'),
     val=dict(
-        type='KittiMonoDatasetMonoCon',
+        type='KittiMonoDatasetHeatmap3D',
         data_root='data/kitti/',
         ann_file='data/kitti/kitti_infos_val_mono3d.coco.json',
         info_file='data/kitti/kitti_infos_val.pkl',
@@ -190,7 +195,7 @@ data = dict(
                 transforms=[
                     dict(type='RandomFlipMonoCon'),
                     dict(
-                        type='Normalize',
+                        type='NormalizeImage',
                         mean=[123.675, 116.28, 103.53],
                         std=[58.395, 57.12, 57.375],
                         to_rgb=True),
@@ -211,7 +216,7 @@ data = dict(
         test_mode=True,
         box_type_3d='Camera'),
     test=dict(
-        type='KittiMonoDatasetMonoCon',
+        type='KittiMonoDatasetHeatmap3D',
         data_root='data/kitti/',
         ann_file='data/kitti/kitti_infos_val_mono3d.coco.json',
         info_file='data/kitti/kitti_infos_val.pkl',
@@ -226,7 +231,7 @@ data = dict(
                 transforms=[
                     dict(type='RandomFlipMonoCon'),
                     dict(
-                        type='Normalize',
+                        type='NormalizeImage',
                         mean=[123.675, 116.28, 103.53],
                         std=[58.395, 57.12, 57.375],
                         to_rgb=True),
