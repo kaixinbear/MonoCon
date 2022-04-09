@@ -7,6 +7,7 @@ from spconv.pytorch.hash import HashTable
 import time
 
 from mmdet.core import multi_apply
+from mmdet.models.utils.gaussian_target import gaussian_radius
 from mmdet3d.models.utils.gaussian_target_3D import gen_gaussian_3D_target, bin_depths, bin_to_depth, \
     get_local_maximum, get_topk_from_3D_heatmap, transpose_and_gather_feat 
 
@@ -103,10 +104,7 @@ class M3D_HeatMap_head(nn.Module):
         self.dir_cls = spconv.SubMConv3d(feat_channel, self.num_alpha_bins, 1, indice_key="subm0")
         self.dir_reg = spconv.SubMConv3d(feat_channel, self.num_alpha_bins, 1, indice_key="subm0")
 
-    def forward(self, feats):
-        return multi_apply(self.forward_single, feats)  
-
-    def forward_single(self, feat):
+    def forward(self, feat):
         center_heatmap_pred = self.heatmap_head(feat).dense().sigmoid()
         center_heatmap_pred = torch.clamp(center_heatmap_pred, min=1e-4, max=1 - 1e-4)
 
@@ -121,18 +119,16 @@ class M3D_HeatMap_head(nn.Module):
                dim_pred, alpha_cls_pred, alpha_offset_pred
 
 
-    @force_fp32(apply_to=('center_heatmap_preds', 'wh_preds', 'offset_preds', 'center2d_to_3d_offset_pred',
-                          'dim_preds', 'alpha_cls_preds',
-                          'alpha_offset_preds', 'depth_offset_preds'))
+    @force_fp32(apply_to=('center_heatmap_pred', 'center2d_to_3d_offset_pred',
+                          'dim_pred', 'alpha_cls_pred',
+                          'alpha_offset_pred', 'depth_offset_pred'))
     def loss(self,
-             center_heatmap_preds,
-             wh_preds,
-             offset_preds,
-             center2d_to_3d_offset_preds,
-             dim_preds,
-             alpha_cls_preds,
-             alpha_offset_preds,
-             depth_offset_preds,
+             center_heatmap_pred,
+             center2d_to_3d_offset_pred,
+             depth_offset_pred,
+             dim_pred,
+             alpha_cls_pred,
+             alpha_offset_pred,
              gt_bboxes,
              gt_labels,
              gt_bboxes_3d,
@@ -145,20 +141,6 @@ class M3D_HeatMap_head(nn.Module):
              attr_labels=None,
              proposal_cfg=None,
              gt_bboxes_ignore=None):
-
-        assert len(center_heatmap_preds) == len(wh_preds) == len(offset_preds) \
-               == len(center2d_to_3d_offset_preds) == len(dim_preds) \
-               == len(alpha_cls_preds) == len(alpha_offset_preds) == 1
-
-        center_heatmap_pred = center_heatmap_preds[0]
-        wh_pred = wh_preds[0]
-        offset_pred = offset_preds[0]
-        center2d_to_3d_offset_pred = center2d_to_3d_offset_preds[0]
-        dim_pred = dim_preds[0]
-        alpha_cls_pred = alpha_cls_preds[0]
-        alpha_offset_pred = alpha_offset_preds[0]
-        depth_offset_pred = depth_offset_preds[0]
-
         batch_size = center_heatmap_pred.shape[0]
 
         target_result = self.get_3D_targets(gt_bboxes, gt_labels,
@@ -184,13 +166,6 @@ class M3D_HeatMap_head(nn.Module):
         mask_target = target_result['mask_target']
 
         # select desired preds and labels based on mask
-
-        # 2d offset
-        offset_pred = self.extract_input_from_tensor(offset_pred, indices, mask_target)
-        offset_target = self.extract_target_from_tensor(offset_target, mask_target)
-        # 2d size
-        wh_pred = self.extract_input_from_tensor(wh_pred, indices, mask_target)
-        wh_target = self.extract_target_from_tensor(wh_target, mask_target)
         # 3d dim
         dim_pred = self.extract_input_from_tensor(dim_pred, indices, mask_target)
         dim_target = self.extract_target_from_tensor(dim_target, mask_target)
@@ -211,17 +186,30 @@ class M3D_HeatMap_head(nn.Module):
                                                                 indices, mask_target)  # B * (num_kpt * 2)
         center2d_to_3d_offset_target = self.extract_target_from_tensor(center2d_to_3d_offset_target, mask_target)
 
+        # 有可能稀疏卷积生成的mask没有覆盖到GT Heatmap 3D 
+        # 对于没有覆盖到的，舍弃该样本先！后续需要改进；
+        ignore_sample = (dim_pred != torch.tensor([0.0, 0.0, 0.0], dtype=dim_pred.dtype, device=dim_pred.device))
+        ignore_sample = torch.any(ignore_sample, dim=1)
+        dim_pred = dim_pred[ignore_sample, ...]
+        dim_target = dim_target[ignore_sample, ...]
+
+        depth_offset_pred = depth_offset_pred[ignore_sample, ...]
+        depth_offset_target = depth_offset_target[ignore_sample, ...]
+        center2d_to_3d_offset_pred = center2d_to_3d_offset_pred[ignore_sample, ...]
+        center2d_to_3d_offset_target = center2d_to_3d_offset_target[ignore_sample, ...]
+        alpha_cls_pred = alpha_cls_pred[ignore_sample, ...]
+        alpha_cls_onehot_target = alpha_cls_onehot_target[ignore_sample, ...]
+        alpha_offset_pred = alpha_offset_pred[ignore_sample, ...]
+        alpha_offset_target = alpha_offset_target[ignore_sample, ...]
+
         # calculate loss
         loss_center_heatmap = self.loss_center_heatmap(center_heatmap_pred, center_heatmap_target)
-
-        loss_wh = self.loss_wh(wh_pred, wh_target)
-        loss_offset = self.loss_offset(offset_pred, offset_target)
         if self.dim_aware_in_loss:
             loss_dim = self.loss_dim(dim_pred, dim_target, dim_pred)
         else:
             loss_dim = self.loss_dim(dim_pred, dim_target)
 
-        loss_depth_offset = self.loss_depth_offset(depth_offset_preds, depth_offset_target)
+        loss_depth_offset = self.loss_depth_offset(depth_offset_pred, depth_offset_target)
 
         loss_center2d_to_3d_offset = self.loss_center2d_to_3d_offset(center2d_to_3d_offset_pred, center2d_to_3d_offset_target)
 
@@ -233,8 +221,6 @@ class M3D_HeatMap_head(nn.Module):
 
         return dict(
             loss_center_heatmap=loss_center_heatmap,
-            loss_wh=loss_wh,
-            loss_offset=loss_offset,
             loss_dim=loss_dim,
             loss_center2d_to_3d_offset=loss_center2d_to_3d_offset,
             loss_alpha_cls=loss_alpha_cls,
@@ -321,10 +307,11 @@ class M3D_HeatMap_head(nn.Module):
                                          min_overlap=0.3)
                 radius = max(0, int(radius))
                 ind = gt_label[j]
-                gen_gaussian_3D_target(center_heatmap_target[batch_id, ind],
-                                    [ctx_int, cty_int], radius, depth_rel)
-
+                
                 depth_bin_index = bin_depths(depth[j])
+
+                gen_gaussian_3D_target(center_heatmap_target[batch_id, ind],
+                                    [ctx_int, cty_int, depth_bin_index], radius, depth_rel)
 
                 indices[batch_id, j] = cty_int * feat_w * feat_d + ctx_int * feat_d + depth_bin_index
 
@@ -402,32 +389,24 @@ class M3D_HeatMap_head(nn.Module):
         return alpha
     
     def get_bboxes(self,
-                   center_heatmap_preds,
-                   wh_preds,
-                   offset_preds,
-                   center2d_to_3d_offset_pred_preds,
-                   dim_preds,
-                   alpha_cls_preds,
-                   alpha_offset_preds,
-                   depth_offset_preds,
+                   center_heatmap_pred,
+                   center2d_to_3d_offset_pred_pred,
+                   depth_offset_pred,
+                   dim_pred,
+                   alpha_cls_pred,
+                   alpha_offset_pred,
                    img_metas,
                    rescale=False):
-
-        assert len(center_heatmap_preds) == len(wh_preds) == len(offset_preds) \
-               == len(center2d_to_3d_offset_pred_preds) ==  len(dim_preds) \
-               == len(alpha_cls_preds) == len(alpha_offset_preds) == 1
         scale_factors = [img_meta['scale_factor'] for img_meta in img_metas]
         box_type_3d = img_metas[0]['box_type_3d']
 
         batch_det_bboxes, batch_det_bboxes_3d, batch_labels = self.decode_3D_heatmap(
-            center_heatmap_preds[0],
-            wh_preds[0],
-            offset_preds[0],
-            center2d_to_3d_offset_pred_preds[0],
-            dim_preds[0],
-            alpha_cls_preds[0],
-            alpha_offset_preds[0],
-            depth_offset_preds[0],
+            center_heatmap_pred,
+            center2d_to_3d_offset_pred_pred,
+            dim_pred,
+            alpha_cls_pred,
+            alpha_offset_pred,
+            depth_offset_pred,
             img_metas[0]['pad_shape'][:2],
             img_metas[0]['cam_intrinsic'],
             k=self.test_cfg.topk,
@@ -450,8 +429,6 @@ class M3D_HeatMap_head(nn.Module):
 
     def decode_3D_heatmap(self,
                        center_heatmap_pred,
-                       wh_pred,
-                       offset_pred,
                        center2d_to_3d_offset_pred_pred,
                        dim_pred,
                        alpha_cls_pred,
@@ -473,8 +450,6 @@ class M3D_HeatMap_head(nn.Module):
             center_heatmap_pred, k=k)
         batch_scores, batch_index, batch_topk_labels = batch_dets
 
-        wh = transpose_and_gather_feat(wh_pred, batch_index)
-        offset = transpose_and_gather_feat(offset_pred, batch_index)
         topk_xs = xs + offset[..., 0]
         topk_ys = ys + offset[..., 1]
         tl_x = (topk_xs - wh[..., 0] / 2) * (inp_w / width)

@@ -32,7 +32,7 @@ train_pipeline = [
     dict(type='RandomFlipMonoCon', flip_ratio_bev_horizontal=0.5),
     dict(type='NormalizeImage', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
-    dict(type='DownsampleDepthMap', DOWNSAMPLE_FACTOR=4),
+    dict(type='DownsampleDepthMap', DOWNSAMPLE_FACTOR=16),
     # Note: keys ['gt_kpts_2d', 'gt_kpts_valid_mask'] is hard coded in DefaultFormatBundle
     dict(type='DefaultFormatBundle3D', class_names=class_names),
     dict(

@@ -9,7 +9,7 @@ from .parta2_rpn_head import PartA2RPNHead
 from .shape_aware_head import ShapeAwareHead
 from .ssd_3d_head import SSD3DHead
 from .vote_head import VoteHead
-from .monocon_head import MonoConHead
+from .monocon_head import MonoConHead, MonoConHead_W_DepthDis
 from .monocon_head_inference import MonoConHeadInference
 from .m3d_heatmap_head import M3D_HeatMap_head
 
@@ -17,5 +17,5 @@ __all__ = [
     'Anchor3DHead', 'FreeAnchor3DHead', 'PartA2RPNHead', 'VoteHead',
     'SSD3DHead', 'BaseConvBboxHead', 'CenterHead', 'ShapeAwareHead',
     'BaseMono3DDenseHead', 'AnchorFreeMono3DHead', 'FCOSMono3DHead',
-    'MonoConHead', 'MonoConHeadInference', 'M3D_HeatMap_head'
+    'MonoConHead', 'MonoConHeadInference', 'M3D_HeatMap_head', 'MonoConHead_W_DepthDis'
 ]

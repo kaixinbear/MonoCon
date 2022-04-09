@@ -10,18 +10,17 @@ from skimage import io
 EPS = 1e-12
 INF = 1e10
 
-
 @DATASETS.register_module()
 class KittiMonoDatasetHeatmap3D(KittiMonoDataset):
 
     def __init__(self,
                  data_root,
                  info_file,
-                 min_height=EPS,
-                 min_depth=EPS,
-                 max_depth=INF,
-                 max_truncation=INF,
-                 max_occlusion=INF,
+                 min_height=25,
+                 min_depth=2,
+                 max_depth=65,
+                 max_truncation=0.5,
+                 max_occlusion=2,
                  **kwargs):
         super().__init__(
             data_root=data_root,
@@ -171,3 +170,25 @@ class KittiMonoDatasetHeatmap3D(KittiMonoDataset):
             seg_map=seg_map)
 
         return ann
+
+@DATASETS.register_module()
+class KittiMonoDatasetDepthMap(KittiMonoDatasetHeatmap3D):
+    def __init__(self,
+                data_root,
+                info_file,
+                 min_height=25,
+                 min_depth=2,
+                 max_depth=65,
+                 max_truncation=0.5,
+                 max_occlusion=2,
+                **kwargs):
+        super().__init__(
+            data_root=data_root,
+            info_file=info_file,
+            **kwargs)
+        self.data_root = Path(data_root)
+        self.min_height = min_height
+        self.min_depth = min_depth
+        self.max_depth = max_depth
+        self.max_truncation = max_truncation
+        self.max_occlusion = max_occlusion

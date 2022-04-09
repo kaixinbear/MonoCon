@@ -14,12 +14,13 @@ class CenterNetGaussianFocalLoss(nn.Module):
         loss_weight (float, optional): Weight of loss. Defaults to 1.0.
     """
 
-    def __init__(self, loss_weight=1.0, gamma=2.0, beta=4.0, alpha=-1):
+    def __init__(self, loss_weight=1.0, neg_loss_weight=1.0, gamma=2.0, beta=4.0, alpha=-1):
         super(CenterNetGaussianFocalLoss, self).__init__()
         self.loss_weight = loss_weight
         self.gamma = gamma
         self.beta = beta
         self.alpha = alpha
+        self.neg_loss_weight = neg_loss_weight
 
     def forward(self,
                 input,
@@ -60,6 +61,8 @@ class CenterNetGaussianFocalLoss(nn.Module):
         if self.alpha >= 0:
             pos_loss = self.alpha * pos_loss
             neg_loss = (1 - self.alpha) * neg_loss
+        
+        neg_loss = neg_loss * self.neg_loss_weight
 
         if num_pos == 0:
             loss = loss - neg_loss

@@ -1,7 +1,7 @@
 # dataset settings
-dataset_type = 'KittiMonoDatasetMonoCon'
+dataset_type = 'KittiMonoDatasetDepthMap'
 data_root = 'data/kitti/'
-class_names = ['Car']
+class_names = ['Pedestrian', 'Cyclist', 'Car']
 input_modality = dict(
     use_lidar=False,
     use_camera=True,
@@ -23,20 +23,22 @@ train_pipeline = [
         with_label_3d=True,
         with_bbox_depth=True),
     dict(
-        type='PhotoMetricDistortion',
+        type='PhotoMetricDistortionImage',
         brightness_delta=32,
         contrast_range=(0.5, 1.5),
         saturation_range=(0.5, 1.5),
         hue_delta=18),
     dict(type='RandomShiftMonoCon', shift_ratio=0.5, max_shift_px=32),
     dict(type='RandomFlipMonoCon', flip_ratio_bev_horizontal=0.5),
-    dict(type='Normalize', **img_norm_cfg),
+    dict(type='NormalizeImage', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
+    dict(type='DownsampleDepthMap', DOWNSAMPLE_FACTOR=4),
     # Note: keys ['gt_kpts_2d', 'gt_kpts_valid_mask'] is hard coded in DefaultFormatBundle
     dict(type='DefaultFormatBundle3D', class_names=class_names),
     dict(
         type='Collect3D',
         keys=[
+            'depth_map',
             'img', 'gt_bboxes', 'gt_labels', 'gt_bboxes_ignore', 'gt_bboxes_3d',
             'gt_labels_3d', 'centers2d', 'depths', 'gt_kpts_2d', 'gt_kpts_valid_mask',
         ],
@@ -57,7 +59,7 @@ test_pipeline = [
         flip=False,
         transforms=[
             dict(type='RandomFlipMonoCon'),
-            dict(type='Normalize', **img_norm_cfg),
+            dict(type='NormalizeImage', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
             dict(
                 type='DefaultFormatBundle3D',

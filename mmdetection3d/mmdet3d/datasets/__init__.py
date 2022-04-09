@@ -23,7 +23,7 @@ from .utils import get_loading_pipeline
 from .waymo_dataset import WaymoDataset
 
 from .kitti_mono_dataset_monocon import KittiMonoDatasetMonoCon
-from .kitti_mono_dataset_m3d_heatmap import KittiMonoDatasetHeatmap3D
+from .kitti_mono_dataset_m3d_heatmap import KittiMonoDatasetHeatmap3D, KittiMonoDatasetDepthMap
 
 __all__ = [
     'KittiDataset', 'KittiMonoDataset', 'GroupSampler',
@@ -38,5 +38,5 @@ __all__ = [
     'Custom3DSegDataset', 'LoadPointsFromMultiSweeps', 'WaymoDataset',
     'BackgroundPointsFilter', 'VoxelBasedPointSampler', 'get_loading_pipeline',
     'RandomDropPointsColor', 'RandomJitterPoints', 'ObjectNameFilter', 'KittiMonoDatasetMonoCon',
-    'KittiMonoDatasetHeatmap3D'
+    'KittiMonoDatasetHeatmap3D', 'KittiMonoDatasetDepthMap'
 ]

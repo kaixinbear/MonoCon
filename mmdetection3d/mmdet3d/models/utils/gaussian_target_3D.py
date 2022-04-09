@@ -234,7 +234,7 @@ def transpose_and_gather_feat(feat, ind):
             (B, N, C)
     """
     feat = feat.permute(0, 2, 3, 4, 1).contiguous()
-    feat = feat.view(feat.size(0), -1, feat.size(3))
+    feat = feat.view(feat.size(0), -1, feat.size(4))
     feat = gather_feat(feat, ind)
     return feat
 
@@ -242,7 +242,37 @@ def transpose_and_gather_feat(feat, ind):
 if __name__=='__main__':
     # h = gaussian3D(radius_2d=10, depth_rel=3, sigma=1)
     # print(h)
-    heatmap_3d = torch.zeros([1, 3, 30, 70, 80])
-    # 35(cx) 对应 70(w), 12(cy) 对应 30(h)
-    gen_gaussian_3D_target(heatmap_3d[0, 0], center=[35, 12, 26], radius=4)
-    
+    # heatmap_3d = torch.zeros([1, 3, 30, 70, 80])
+    # # 35(cx) 对应 70(w), 12(cy) 对应 30(h)
+    # gen_gaussian_3D_target(heatmap_3d[0, 0], center=[35, 12, 26], radius=4)
+
+
+    # depth-level 的shape为(B, D+1, H, W)
+    # 对所有前景depth_bin做conv得到Object level heatmap 3D pred
+    # 生成 Object level heatmap 3D gt: (B, D, H, W)
+    # 采用CenterNetGaussianFocalLoss
+
+    # Per Object Heatmap3D Generator
+    tmp_bins = 12
+    depth = 10
+    depth_bin = bin_depths(depth, mode='LID', num_bins=tmp_bins, depth_min=2.0, depth_max=46.8, target=True)
+    print(depth_bin)
+    heat_map_2d = torch.tensor([[0, 0.6, 0],
+                               [0.6, 1, 0.6],
+                               [0, 0.6, 0]])
+    depth_dis = torch.zeros([tmp_bins])
+    if depth_bin != tmp_bins:
+        depth_dis[max(0, depth_bin-1):min(depth_bin+2, tmp_bins)] = 1   # 0.7
+    heat_map_2d = heat_map_2d.unsqueeze(0)            # (1, ROI_H, ROI_W)
+    depth_dis = depth_dis.unsqueeze(-1).unsqueeze(-1) # (D, 1, 1)
+    print(depth_dis)
+    heatmap_map_3d = heat_map_2d * depth_dis
+    print(heatmap_map_3d)
+
+    # Per Image Heatmap3D Generator
+    heatmap3d = torch.zeros(D, H, W)
+    for obj_id, gt_2D_Box in enumerate(gt_2D_Boxes):
+        u1, v1, u2, v2 = gt_2D_Box
+        heat_map_2d = heatmap2d[v1:v2, u1:u2]
+        heat_map_3d = object_heat_map_3d(heat_map_2d, depths[obj_id])
+        heatmap3d[:, v1:v2, u1:u2] = heat_map_3d

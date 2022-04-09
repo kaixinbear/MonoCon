@@ -26,7 +26,7 @@ class Balancer(nn.Module):
         self.bg_weight = bg_weight
         self.downsample_factor = downsample_factor
 
-    def compute_fg_mask(self, gt_boxes2d, shape, downsample_factor=1, device=torch.device("cpu")):
+    def compute_fg_mask(self, gt_boxes2d, shape, downsample_factor=1, device=torch.device("cpu"), bin_nums=81, depth_target=None):
         """
         Compute foreground mask for images
         Args:
@@ -38,9 +38,10 @@ class Balancer(nn.Module):
             fg_mask (shape), Foreground mask
         """
         fg_mask = torch.zeros(shape, dtype=torch.bool, device=device)
-
+        B, H, W = fg_mask.shape
+        voxel_mask = torch.zeros([B, H, W, bin_nums-1], dtype=torch.bool, device=device)
         for i in range(len(gt_boxes2d)):
-            bi_gt_boxes2d = gt_boxes2d[i]
+            bi_gt_boxes2d = gt_boxes2d[i].clone()
             bi_gt_boxes2d /= downsample_factor
             bi_gt_boxes2d[:, :2] = torch.floor(bi_gt_boxes2d[:, :2])
             bi_gt_boxes2d[:, 2:] = torch.ceil(bi_gt_boxes2d[:, 2:])
@@ -48,10 +49,21 @@ class Balancer(nn.Module):
             for n in range(bi_gt_boxes2d.shape[0]):
                 u1, v1, u2, v2 = bi_gt_boxes2d[n]
                 fg_mask[i, v1:v2, u1:u2] = True
+                depth_roi = depth_target[i, v1:v2, u1:u2]
+                # print("depth_roi", depth_roi)
+                roi_mask = (depth_roi != bin_nums-1) & (~depth_roi.isnan())
+                if torch.all(~roi_mask):
+                    continue
+                # print("bg_mask", (depth_roi == bin_nums-1).sum())
+                mean_depth_index = int(depth_roi[roi_mask].float().mean())
+                # median_depth_index = int(depth_roi[roi_mask].float().median())
+                left_depth_index = max(0, mean_depth_index - 10)
+                right_depth_index = min(bin_nums - 1, mean_depth_index + 18)
+                voxel_mask[i, v1:v2, u1:u2, left_depth_index:right_depth_index] = True
+                voxel_mask[i, v1:v2, u1:u2][~roi_mask] = False
+        return fg_mask, voxel_mask
 
-        return fg_mask
-
-    def forward(self, loss, gt_boxes2d):
+    def forward(self, loss, gt_boxes2d, bin_nums, depth_target):
         """
         Forward pass
         Args:
@@ -62,10 +74,12 @@ class Balancer(nn.Module):
             tb_dict: dict[float], All losses to log in tensorboard
         """
         # Compute masks
-        fg_mask = self.compute_fg_mask(gt_boxes2d=gt_boxes2d,
+        fg_mask, voxel_mask = self.compute_fg_mask(gt_boxes2d=gt_boxes2d,
                                              shape=loss.shape,
                                              downsample_factor=self.downsample_factor,
-                                             device=loss.device)
+                                             device=loss.device,
+                                             bin_nums=bin_nums,
+                                             depth_target=depth_target)
         bg_mask = ~fg_mask
 
         # Compute balancing weights
@@ -80,7 +94,7 @@ class Balancer(nn.Module):
         # Get total loss
         loss = fg_loss + bg_loss
         tb_dict = {"fg_loss": fg_loss, "bg_loss": bg_loss}
-        return loss, tb_dict
+        return loss, tb_dict, voxel_mask
 
 
 @LOSSES.register_module()
@@ -136,12 +150,14 @@ class DepthLoss(nn.Module):
         # Compute loss
         loss = self.loss_func(depth_logits, depth_target)
 
+        _, bin_nums, _, _ = depth_logits.shape
+
         # Compute foreground/background balancing
-        loss, tb_dict = self.balancer(loss=loss, gt_boxes2d=gt_boxes2d)
+        loss, tb_dict, voxel_mask = self.balancer(loss=loss, gt_boxes2d=gt_boxes2d, bin_nums=bin_nums, depth_target=depth_target)
 
         # Final loss
         loss *= self.weight
 
         tb_dict.update({"loss_depth_estimate": loss})
-        return tb_dict
+        return tb_dict, voxel_mask
 
