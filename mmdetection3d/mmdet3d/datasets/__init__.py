@@ -3,6 +3,7 @@ from .builder import DATASETS, build_dataset
 from .custom_3d import Custom3DDataset
 from .custom_3d_seg import Custom3DSegDataset
 from .kitti_dataset import KittiDataset
+from .vkitti_dataset import VKittiDataset
 from .kitti_mono_dataset import KittiMonoDataset
 from .lyft_dataset import LyftDataset
 from .nuscenes_dataset import NuScenesDataset
@@ -24,7 +25,8 @@ from .waymo_dataset import WaymoDataset
 
 from .kitti_mono_dataset_monocon import KittiMonoDatasetMonoCon
 from .kitti_mono_dataset_m3d_heatmap import KittiMonoDatasetHeatmap3D, KittiMonoDatasetDepthMap
-
+from .vkitti_mono_dataset import VKittiMonoDataset
+from .vkitti_mono_dataset_monocon import VKittiMonoDatasetMonoCon
 __all__ = [
     'KittiDataset', 'KittiMonoDataset', 'GroupSampler',
     'DistributedGroupSampler', 'build_dataloader', 'RepeatFactorDataset',
@@ -38,5 +40,6 @@ __all__ = [
     'Custom3DSegDataset', 'LoadPointsFromMultiSweeps', 'WaymoDataset',
     'BackgroundPointsFilter', 'VoxelBasedPointSampler', 'get_loading_pipeline',
     'RandomDropPointsColor', 'RandomJitterPoints', 'ObjectNameFilter', 'KittiMonoDatasetMonoCon',
-    'KittiMonoDatasetHeatmap3D', 'KittiMonoDatasetDepthMap'
+    'KittiMonoDatasetHeatmap3D', 'KittiMonoDatasetDepthMap',
+    'VKittiDataset', 'VKittiMonoDataset', 'VKittiMonoDatasetMonoCon'
 ]

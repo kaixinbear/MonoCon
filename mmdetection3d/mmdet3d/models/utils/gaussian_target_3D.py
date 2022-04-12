@@ -7,7 +7,9 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
 import numpy as np
 import matplotlib.pyplot as plt
-
+from mmdet.models.utils.gaussian_target import (gaussian_radius, gen_gaussian_target, gaussian2D)
+from mmdet.models.utils.gaussian_target import (get_local_maximum, get_topk_from_heatmap,
+                                                transpose_and_gather_feat)
 
 
 def bin_depths(depth_map, mode='LID', num_bins=80, depth_min=2.0, depth_max=46.8, target=True):
@@ -80,163 +82,214 @@ def vis(heatmap):
     fg_z = z[mask]
     ax.scatter(fg_x, fg_z, fg_y,c=heatmap[fg_y, fg_x, fg_z], alpha=0.5)
 
-def gaussian3D(radius_2d, depth_rel=6, sigma=1, dtype=torch.float32, device='cpu'):
-    """Generate 3D gaussian kernel.
-        Pay attention that radius on depth axis could not keep with radius on 2D.
-        Set Depth radius as constant value at first.
-        z_radius = 6 grid
+# def gaussian3D(radius_2d, depth_rel=6, sigma=1, dtype=torch.float32, device='cpu'):
+#     """Generate 3D gaussian kernel.
+#         Pay attention that radius on depth axis could not keep with radius on 2D.
+#         Set Depth radius as constant value at first.
+#         z_radius = 6 grid
+
+#     Args:
+#         radius_2d (int): Radius of 2D Bounding BBox gaussian kernel.
+#         depth_rel: Radius of depth gaussian kernel.
+#         sigma (int): Sigma of gaussian function. Default: 1.
+#         dtype (torch.dtype): Dtype of gaussian tensor. Default: torch.float32.
+#         device (str): Device of gaussian tensor. Default: 'cpu'.
+
+#     Returns:
+#         h (Tensor): Gaussian kernel with a
+#             ``(2 * radius + 1) * (2 * radius + 1) * (2 * depth_rel + 1)`` shape.
+#     """
+#     radius = radius_2d
+#     x = torch.arange(
+#         -radius, radius + 1, dtype=dtype, device=device).view(-1, 1, 1)
+#     y = torch.arange(
+#         -radius, radius + 1, dtype=dtype, device=device).view(1, -1, 1)
+#     z = torch.arange(
+#         -depth_rel, depth_rel + 1, dtype=dtype, device=device).view(1, 1, -1)
+#     # z = torch.linspace(
+#     #     -depth_rel, depth_rel, 2 * radius, dtype=dtype, device=device).view(1, 1, -1)
+
+#     h = (-(x * x + y * y + z * z) / (2 * sigma * sigma)).exp()
+
+#     h[h < torch.finfo(h.dtype).eps * h.max()] = 0
+#     return h
+
+# def gen_gaussian_3D_target(heatmap_3d, center, radius, depth_rel=6, k=1):
+#     """Generate 3D gaussian heatmap.
+
+#     Args:
+#         heatmap_3d (Tensor): Input 3D heatmap, [feat_H, feat_W, feat_D]. the gaussian kernel will cover on
+#             it and maintain the max value.
+#             set feat
+#         center (list[int]): Coord of gaussian kernel's center.
+#         radius (int): Radius of 2D gaussian kernel.
+#         depth_rel (int): Absolute depth offset grid for z axis.
+#         k (int): Coefficient of gaussian kernel. Default: 1.
+
+#     Returns:
+#         out_heatmap (Tensor): Updated heatmap covered by gaussian kernel.
+#     """
+#     diameter = 2 * radius + 1
+#     gaussian_3d_kernel = gaussian3D(
+#         radius, depth_rel, sigma=diameter / 6, dtype=heatmap_3d.dtype, device=heatmap_3d.device)
+
+#     x, y, z = center # x, y refers to 2D BBox Center, z refers to depth channel 
+
+#     # contiguous depth to bin index
+#     z = bin_depths(z)
+
+#     height, width, length = heatmap_3d.shape[:3]
+
+#     left, right = min(x, radius), min(width - x, radius + 1)
+#     top, bottom = min(y, radius), min(height - y, radius + 1)
+#     forward, backward = min(z, depth_rel), min(length - z, depth_rel + 1)
+
+#     masked_heatmap = heatmap_3d[y - top:y + bottom, x - left:x + right, z - forward:z + backward]
+#     masked_gaussian = gaussian_3d_kernel[radius - top:radius + bottom,
+#                                       radius - left:radius + right,
+#                                       depth_rel - forward:depth_rel + backward]
+#     out_heatmap = heatmap_3d
+
+#     torch.max(
+#         masked_heatmap,
+#         masked_gaussian * k,
+#         out=out_heatmap[y - top:y + bottom, x - left:x + right, z - forward:z+backward])
+
+#     return out_heatmap
+
+def gen_gaussian_depth_target(heatmap, center, radius, depth_heatmap_target, depth_val, depth_bins=80, k=1):
+    """Generate 2D gaussian heatmap.
 
     Args:
-        radius_2d (int): Radius of 2D Bounding BBox gaussian kernel.
-        depth_rel: Radius of depth gaussian kernel.
-        sigma (int): Sigma of gaussian function. Default: 1.
-        dtype (torch.dtype): Dtype of gaussian tensor. Default: torch.float32.
-        device (str): Device of gaussian tensor. Default: 'cpu'.
-
-    Returns:
-        h (Tensor): Gaussian kernel with a
-            ``(2 * radius + 1) * (2 * radius + 1) * (2 * depth_rel + 1)`` shape.
-    """
-    radius = radius_2d
-    x = torch.arange(
-        -radius, radius + 1, dtype=dtype, device=device).view(-1, 1, 1)
-    y = torch.arange(
-        -radius, radius + 1, dtype=dtype, device=device).view(1, -1, 1)
-    z = torch.arange(
-        -depth_rel, depth_rel + 1, dtype=dtype, device=device).view(1, 1, -1)
-    # z = torch.linspace(
-    #     -depth_rel, depth_rel, 2 * radius, dtype=dtype, device=device).view(1, 1, -1)
-
-    h = (-(x * x + y * y + z * z) / (2 * sigma * sigma)).exp()
-
-    h[h < torch.finfo(h.dtype).eps * h.max()] = 0
-    return h
-
-def gen_gaussian_3D_target(heatmap_3d, center, radius, depth_rel=6, k=1):
-    """Generate 3D gaussian heatmap.
-
-    Args:
-        heatmap_3d (Tensor): Input 3D heatmap, [feat_H, feat_W, feat_D]. the gaussian kernel will cover on
+        heatmap (Tensor): Input heatmap, the gaussian kernel will cover on
             it and maintain the max value.
-            set feat
         center (list[int]): Coord of gaussian kernel's center.
-        radius (int): Radius of 2D gaussian kernel.
-        depth_rel (int): Absolute depth offset grid for z axis.
+        radius (int): Radius of gaussian kernel.
+        depth_heatmap_target(Tensor, shape: [D, H, W]): Input Object Depth Heatmap,
+            consider metric of KITTI IoU3D 0.7, bin(depth-0.7, depth, depth+0.7) 
+            is activated.
+        depth_val(float), depth value of the obj.
+        depth_bins: bins number of depth. equals to D.
         k (int): Coefficient of gaussian kernel. Default: 1.
 
     Returns:
         out_heatmap (Tensor): Updated heatmap covered by gaussian kernel.
     """
     diameter = 2 * radius + 1
-    gaussian_3d_kernel = gaussian3D(
-        radius, depth_rel, sigma=diameter / 6, dtype=heatmap_3d.dtype, device=heatmap_3d.device)
+    gaussian_kernel = gaussian2D(
+        radius, sigma=diameter / 6, dtype=heatmap.dtype, device=heatmap.device)
 
-    x, y, z = center # x, y refers to 2D BBox Center, z refers to depth channel 
+    x, y = center
 
-    # contiguous depth to bin index
-    z = bin_depths(z)
-
-    height, width, length = heatmap_3d.shape[:3]
+    height, width = heatmap.shape[:2]
 
     left, right = min(x, radius), min(width - x, radius + 1)
     top, bottom = min(y, radius), min(height - y, radius + 1)
-    forward, backward = min(z, depth_rel), min(length - z, depth_rel + 1)
 
-    masked_heatmap = heatmap_3d[y - top:y + bottom, x - left:x + right, z - forward:z + backward]
-    masked_gaussian = gaussian_3d_kernel[radius - top:radius + bottom,
-                                      radius - left:radius + right,
-                                      depth_rel - forward:depth_rel + backward]
-    out_heatmap = heatmap_3d
-
+    masked_heatmap = heatmap[y - top:y + bottom, x - left:x + right]
+    masked_gaussian = gaussian_kernel[radius - top:radius + bottom,
+                                      radius - left:radius + right]
+    out_heatmap = heatmap
     torch.max(
         masked_heatmap,
         masked_gaussian * k,
-        out=out_heatmap[y - top:y + bottom, x - left:x + right, z - forward:z+backward])
+        out=out_heatmap[y - top:y + bottom, x - left:x + right])
 
-    return out_heatmap
+    # 生成object level depth distribution label.
+    depth_bin_index = bin_depths(depth_val, mode='LID', num_bins=depth_bins, depth_min=2.0, depth_max=46.8, target=True)
+    heat_map_2d = out_heatmap[y - top:y + bottom, x - left:x + right]
+    depth_dis = torch.zeros([depth_bins], device=out_heatmap.device)
+    if depth_bin_index != depth_bins:
+        depth_dis[max(0, depth_bin_index-1):min(depth_bin_index+2, depth_bins)] = 1   # 0.7
+    heat_map_2d = heat_map_2d.unsqueeze(0)            # (1, ROI_H, ROI_W)
+    depth_dis = depth_dis.unsqueeze(-1).unsqueeze(-1) # (D, 1, 1)
+    heatmap_map_3d = heat_map_2d * depth_dis
+    depth_heatmap_target[:, y - top:y + bottom, x - left:x + right] = heatmap_map_3d
 
-def get_local_maximum(heat, kernel=3):
-    """Extract local maximum pixel with given kernal.
+    return out_heatmap, depth_heatmap_target
 
-    Args:
-        heat (Tensor): Target heatmap.
-        kernel (int): Kernel size of max pooling. Default: 3.
+# def get_local_maximum(heat, kernel=3):
+#     """Extract local maximum pixel with given kernal.
 
-    Returns:
-        heat (Tensor): A heatmap where local maximum pixels maintain its
-            own value and other positions are 0.
-    """
-    pad = (kernel - 1) // 2
-    hmax = F.max_pool3d(heat, kernel, stride=1, padding=pad)
-    keep = (hmax == heat).float()
-    return heat * keep
+#     Args:
+#         heat (Tensor): Target heatmap.
+#         kernel (int): Kernel size of max pooling. Default: 3.
 
-def get_topk_from_3D_heatmap(scores, k=20):
-    """Get top k positions from heatmap.
+#     Returns:
+#         heat (Tensor): A heatmap where local maximum pixels maintain its
+#             own value and other positions are 0.
+#     """
+#     pad = (kernel - 1) // 2
+#     hmax = F.max_pool3d(heat, kernel, stride=1, padding=pad)
+#     keep = (hmax == heat).float()
+#     return heat * keep
 
-    Args:
-        scores (Tensor): Target heatmap with shape
-            [batch, num_classes, height, width].
-        k (int): Target number. Default: 20.
+# def get_topk_from_3D_heatmap(scores, k=20):
+#     """Get top k positions from heatmap.
 
-    Returns:
-        tuple[torch.Tensor]: Scores, indexes, categories and coords of
-            topk keypoint. Containing following Tensors:
+#     Args:
+#         scores (Tensor): Target heatmap with shape
+#             [batch, num_classes, height, width].
+#         k (int): Target number. Default: 20.
 
-        - topk_scores (Tensor): Max scores of each topk keypoint.
-        - topk_inds (Tensor): Indexes of each topk keypoint.
-        - topk_clses (Tensor): Categories of each topk keypoint.
-        - topk_ys (Tensor): Y-coord of each topk keypoint.
-        - topk_xs (Tensor): X-coord of each topk keypoint.
-    """
-    batch, _, height, width, length = scores.size()
-    topk_scores, topk_inds = torch.topk(scores.view(batch, -1), k)
-    topk_clses = topk_inds // (height * width * length)
-    topk_inds = topk_inds % (height * width * length)
-    topk_ys = topk_inds // (width * length)
-    topk_inds = topk_inds % (width * length)
-    topk_xs = topk_inds // length
-    topk_zs = (topk_inds % length).int().float()
-    return topk_scores, topk_inds, topk_clses, topk_ys, topk_xs, topk_zs
+#     Returns:
+#         tuple[torch.Tensor]: Scores, indexes, categories and coords of
+#             topk keypoint. Containing following Tensors:
 
-def gather_feat(feat, ind, mask=None):
-    """
-    Same as 2d.
-    Gather feature according to index.
+#         - topk_scores (Tensor): Max scores of each topk keypoint.
+#         - topk_inds (Tensor): Indexes of each topk keypoint.
+#         - topk_clses (Tensor): Categories of each topk keypoint.
+#         - topk_ys (Tensor): Y-coord of each topk keypoint.
+#         - topk_xs (Tensor): X-coord of each topk keypoint.
+#     """
+#     batch, _, height, width, length = scores.size()
+#     topk_scores, topk_inds = torch.topk(scores.view(batch, -1), k)
+#     topk_clses = topk_inds // (height * width * length)
+#     topk_inds = topk_inds % (height * width * length)
+#     topk_ys = topk_inds // (width * length)
+#     topk_inds = topk_inds % (width * length)
+#     topk_xs = topk_inds // length
+#     topk_zs = (topk_inds % length).int().float()
+#     return topk_scores, topk_inds, topk_clses, topk_ys, topk_xs, topk_zs
 
-    Args:
-        feat (Tensor): Target feature map.
-        ind (Tensor): Target coord index.
-        mask (Tensor | None): Mask of feature map. Default: None.
+# def gather_feat(feat, ind, mask=None):
+#     """
+#     Same as 2d.
+#     Gather feature according to index.
 
-    Returns:
-        feat (Tensor): Gathered feature.
-    """
-    dim = feat.size(2)
-    ind = ind.unsqueeze(2).repeat(1, 1, dim)
-    feat = feat.gather(1, ind)
-    if mask is not None:
-        mask = mask.unsqueeze(2).expand_as(feat)
-        feat = feat[mask]
-        feat = feat.view(-1, dim)
-    return feat
+#     Args:
+#         feat (Tensor): Target feature map.
+#         ind (Tensor): Target coord index.
+#         mask (Tensor | None): Mask of feature map. Default: None.
 
-def transpose_and_gather_feat(feat, ind):
-    """Transpose and gather feature according to index.
+#     Returns:
+#         feat (Tensor): Gathered feature.
+#     """
+#     dim = feat.size(2)
+#     ind = ind.unsqueeze(2).repeat(1, 1, dim)
+#     feat = feat.gather(1, ind)
+#     if mask is not None:
+#         mask = mask.unsqueeze(2).expand_as(feat)
+#         feat = feat[mask]
+#         feat = feat.view(-1, dim)
+#     return feat
 
-    Args:
-        feat (Tensor): Target feature map.
-            (B, C, H, W, D)
-        ind (Tensor): Target coord index.
+# def transpose_and_gather_feat(feat, ind):
+#     """Transpose and gather feature according to index.
 
-    Returns:
-        feat (Tensor): Transposed and gathered feature.
-            (B, N, C)
-    """
-    feat = feat.permute(0, 2, 3, 4, 1).contiguous()
-    feat = feat.view(feat.size(0), -1, feat.size(4))
-    feat = gather_feat(feat, ind)
-    return feat
+#     Args:
+#         feat (Tensor): Target feature map.
+#             (B, C, H, W, D)
+#         ind (Tensor): Target coord index.
+
+#     Returns:
+#         feat (Tensor): Transposed and gathered feature.
+#             (B, N, C)
+#     """
+#     feat = feat.permute(0, 2, 3, 4, 1).contiguous()
+#     feat = feat.view(feat.size(0), -1, feat.size(4))
+#     feat = gather_feat(feat, ind)
+#     return feat
 
 
 if __name__=='__main__':
@@ -248,21 +301,21 @@ if __name__=='__main__':
 
 
     # depth-level 的shape为(B, D+1, H, W)
-    # 对所有前景depth_bin做conv得到Object level heatmap 3D pred
+    # 对所有前景depth_bin_index做conv得到Object level heatmap 3D pred
     # 生成 Object level heatmap 3D gt: (B, D, H, W)
     # 采用CenterNetGaussianFocalLoss
 
     # Per Object Heatmap3D Generator
     tmp_bins = 12
     depth = 10
-    depth_bin = bin_depths(depth, mode='LID', num_bins=tmp_bins, depth_min=2.0, depth_max=46.8, target=True)
-    print(depth_bin)
+    depth_bin_index = bin_depths(depth, mode='LID', num_bins=tmp_bins, depth_min=2.0, depth_max=46.8, target=True)
+    print(depth_bin_index)
     heat_map_2d = torch.tensor([[0, 0.6, 0],
                                [0.6, 1, 0.6],
                                [0, 0.6, 0]])
     depth_dis = torch.zeros([tmp_bins])
-    if depth_bin != tmp_bins:
-        depth_dis[max(0, depth_bin-1):min(depth_bin+2, tmp_bins)] = 1   # 0.7
+    if depth_bin_index != tmp_bins:
+        depth_dis[max(0, depth_bin_index-1):min(depth_bin_index+2, tmp_bins)] = 1   # 0.7
     heat_map_2d = heat_map_2d.unsqueeze(0)            # (1, ROI_H, ROI_W)
     depth_dis = depth_dis.unsqueeze(-1).unsqueeze(-1) # (D, 1, 1)
     print(depth_dis)

@@ -5,28 +5,44 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "cwd": "${workspaceFolder}/mmdetection3d",
+            "cwd": "${workspaceFolder}/mmdetection3d/",
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "env":{
-                "CUDA_VISIBLE_DEVICES":"0"
-            },
-            "justMyCode":false,
+            "justMyCode": true,
             "args": [
-                "configs/monocon/monocon_dla34_200e_kitti_w_depthdis_weight0.py", 
-                // "configs/m3d_heatmap/m3d_heatmap3d_dla34_200e_kitti.py",
-                "--work-dir", "./tmp_work_dir"
-                // "./work_dirs/m3d_heatmap3d_dla34_200e_kitti/epoch_130.pth",
-                // "configs/monocon/monocon_dla34_inference_200e_kitti.py",
-                // "./work_dirs/ur_ckpt_location/monocon_val_ckpt.pth", 
-                // "--eval" ,"bbox"
-
-                // "--ckpt", "../pretrain_model/checkpoint_epoch_70.pth",
-                // "--depth_ckpt", "../depth_network/results/stack_finetune_from_sceneflow/checkpoint.pth.tar"
-            ]
-        }
+                "kitti", 
+                "--root-path", "./data/pseudo_kitti", 
+                "--out-dir", "./data/pseudo_kitti", 
+                "--extra-tag", "pseudo_kitti",
+            ],
+        },
+        // {
+        //     "cwd": "${workspaceFolder}/mmdetection3d",
+        //     "name": "Python: Current File",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${file}",
+        //     "console": "integratedTerminal",
+        //     "env": {
+        //         "CUDA_VISIBLE_DEVICES": "5"
+        //     },
+        //     "justMyCode": false,
+        //     "args": [
+        //         "configs/monop2o/monop2o_wo_p.py",
+        //         // "configs/monocon/monocon_dla34_200e_kitti_w_depthdis_weight0.py", 
+        //         // "configs/m3d_heatmap/m3d_heatmap3d_dla34_200e_kitti.py",
+        //         // "--work-dir", "./tmp_work_dir",
+        //         "./work_dirs/monop2o_wo_p/epoch_5.pth",
+        //         // "configs/monocon/monocon_dla34_inference_200e_kitti.py",
+        //         // "./work_dirs/ur_ckpt_location/monocon_val_ckpt.pth", 
+        //         "--eval",
+        //         "bbox"
+        //         // "--ckpt", "../pretrain_model/checkpoint_epoch_70.pth",
+        //         // "--depth_ckpt", "../depth_network/results/stack_finetune_from_sceneflow/checkpoint.pth.tar"
+        //     ]
+        // }
     ]
 }

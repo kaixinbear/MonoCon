@@ -7,7 +7,7 @@ import numpy as np
 from nuscenes.utils.geometry_utils import view_points
 
 from mmdet3d.core.bbox import box_np_ops, points_cam2img
-from .kitti_data_utils import get_kitti_image_info, get_waymo_image_info
+from .vkitti_data_utils import get_vkitti_image_info #, get_waymo_image_info
 from .nuscenes_converter import post_process_coords
 
 kitti_categories = ('Pedestrian', 'Cyclist', 'Car')
@@ -37,11 +37,16 @@ def convert_to_kitti_info_version2(info):
             'velodyne_path': info['velodyne_path'],
         }
 
-
+'''
+    def _read_imageset_file(path):
+        with open(path, 'r') as f:
+            lines = f.readlines()
+        return [int(line) for line in lines]
+'''
 def _read_imageset_file(path):
     with open(path, 'r') as f:
         lines = f.readlines()
-    return [int(line) for line in lines]
+    return [line.split(' ')[0] for line in lines]
 
 
 def _calculate_num_points_in_gt(data_path,
@@ -85,7 +90,7 @@ def _calculate_num_points_in_gt(data_path,
         annos['num_points_in_gt'] = num_points_in_gt.astype(np.int32)
 
 
-def create_kitti_info_file(data_path,
+def create_vkitti_info_file(data_path,
                            pkl_prefix='kitti',
                            with_plane=False,
                            save_path=None,
@@ -105,17 +110,17 @@ def create_kitti_info_file(data_path,
         relative_path (bool, optional): Whether to use relative path.
             Default: True.
     """
-    imageset_folder = Path(data_path) / 'ImageSets'
-    train_img_ids = _read_imageset_file(str(imageset_folder / 'train.txt'))
-    val_img_ids = _read_imageset_file(str(imageset_folder / 'val.txt'))
-    test_img_ids = _read_imageset_file(str(imageset_folder / 'test.txt'))
+    imageset_folder = Path(data_path) 
+    train_img_ids = _read_imageset_file(str(imageset_folder / 'train_Det3D.txt'))
+    val_img_ids = _read_imageset_file(str(imageset_folder / 'val_Det3D.txt'))
+    test_img_ids = _read_imageset_file(str(imageset_folder / 'test_Det3D.txt'))
 
     print('Generate info. this may take several minutes.')
     if save_path is None:
         save_path = Path(data_path)
     else:
         save_path = Path(save_path)
-    kitti_infos_train = get_kitti_image_info(
+    kitti_infos_train = get_vkitti_image_info(
         data_path,
         training=True,
         velodyne=True,
@@ -123,11 +128,11 @@ def create_kitti_info_file(data_path,
         with_plane=with_plane,
         image_ids=train_img_ids,
         relative_path=relative_path)
-    _calculate_num_points_in_gt(data_path, kitti_infos_train, relative_path)
+    # _calculate_num_points_in_gt(data_path, kitti_infos_train, relative_path)
     filename = save_path / f'{pkl_prefix}_infos_train.pkl'
     print(f'Kitti info train file is saved to {filename}')
     mmcv.dump(kitti_infos_train, filename)
-    kitti_infos_val = get_kitti_image_info(
+    kitti_infos_val = get_vkitti_image_info(
         data_path,
         training=True,
         velodyne=True,
@@ -135,7 +140,7 @@ def create_kitti_info_file(data_path,
         with_plane=with_plane,
         image_ids=val_img_ids,
         relative_path=relative_path)
-    _calculate_num_points_in_gt(data_path, kitti_infos_val, relative_path)
+    # _calculate_num_points_in_gt(data_path, kitti_infos_val, relative_path)
     filename = save_path / f'{pkl_prefix}_infos_val.pkl'
     print(f'Kitti info val file is saved to {filename}')
     mmcv.dump(kitti_infos_val, filename)
@@ -143,7 +148,7 @@ def create_kitti_info_file(data_path,
     print(f'Kitti info trainval file is saved to {filename}')
     mmcv.dump(kitti_infos_train + kitti_infos_val, filename)
 
-    kitti_infos_test = get_kitti_image_info(
+    kitti_infos_test = get_vkitti_image_info(
         data_path,
         training=False,
         label_info=False,
@@ -157,88 +162,88 @@ def create_kitti_info_file(data_path,
     mmcv.dump(kitti_infos_test, filename)
 
 
-def create_waymo_info_file(data_path,
-                           pkl_prefix='waymo',
-                           save_path=None,
-                           relative_path=True,
-                           max_sweeps=5):
-    """Create info file of waymo dataset.
+# def create_waymo_info_file(data_path,
+#                            pkl_prefix='waymo',
+#                            save_path=None,
+#                            relative_path=True,
+#                            max_sweeps=5):
+#     """Create info file of waymo dataset.
 
-    Given the raw data, generate its related info file in pkl format.
+#     Given the raw data, generate its related info file in pkl format.
 
-    Args:
-        data_path (str): Path of the data root.
-        pkl_prefix (str, optional): Prefix of the info file to be generated.
-            Default: 'waymo'.
-        save_path (str, optional): Path to save the info file.
-            Default: None.
-        relative_path (bool, optional): Whether to use relative path.
-            Default: True.
-        max_sweeps (int, optional): Max sweeps before the detection frame
-            to be used. Default: 5.
-    """
-    imageset_folder = Path(data_path) / 'ImageSets'
-    train_img_ids = _read_imageset_file(str(imageset_folder / 'train.txt'))
-    val_img_ids = _read_imageset_file(str(imageset_folder / 'val.txt'))
-    test_img_ids = _read_imageset_file(str(imageset_folder / 'test.txt'))
+#     Args:
+#         data_path (str): Path of the data root.
+#         pkl_prefix (str, optional): Prefix of the info file to be generated.
+#             Default: 'waymo'.
+#         save_path (str, optional): Path to save the info file.
+#             Default: None.
+#         relative_path (bool, optional): Whether to use relative path.
+#             Default: True.
+#         max_sweeps (int, optional): Max sweeps before the detection frame
+#             to be used. Default: 5.
+#     """
+#     imageset_folder = Path(data_path) / 'ImageSets'
+#     train_img_ids = _read_imageset_file(str(imageset_folder / 'train.txt'))
+#     val_img_ids = _read_imageset_file(str(imageset_folder / 'val.txt'))
+#     test_img_ids = _read_imageset_file(str(imageset_folder / 'test.txt'))
 
-    print('Generate info. this may take several minutes.')
-    if save_path is None:
-        save_path = Path(data_path)
-    else:
-        save_path = Path(save_path)
-    waymo_infos_train = get_waymo_image_info(
-        data_path,
-        training=True,
-        velodyne=True,
-        calib=True,
-        pose=True,
-        image_ids=train_img_ids,
-        relative_path=relative_path,
-        max_sweeps=max_sweeps)
-    _calculate_num_points_in_gt(
-        data_path,
-        waymo_infos_train,
-        relative_path,
-        num_features=6,
-        remove_outside=False)
-    filename = save_path / f'{pkl_prefix}_infos_train.pkl'
-    print(f'Waymo info train file is saved to {filename}')
-    mmcv.dump(waymo_infos_train, filename)
-    waymo_infos_val = get_waymo_image_info(
-        data_path,
-        training=True,
-        velodyne=True,
-        calib=True,
-        pose=True,
-        image_ids=val_img_ids,
-        relative_path=relative_path,
-        max_sweeps=max_sweeps)
-    _calculate_num_points_in_gt(
-        data_path,
-        waymo_infos_val,
-        relative_path,
-        num_features=6,
-        remove_outside=False)
-    filename = save_path / f'{pkl_prefix}_infos_val.pkl'
-    print(f'Waymo info val file is saved to {filename}')
-    mmcv.dump(waymo_infos_val, filename)
-    filename = save_path / f'{pkl_prefix}_infos_trainval.pkl'
-    print(f'Waymo info trainval file is saved to {filename}')
-    mmcv.dump(waymo_infos_train + waymo_infos_val, filename)
-    waymo_infos_test = get_waymo_image_info(
-        data_path,
-        training=False,
-        label_info=False,
-        velodyne=True,
-        calib=True,
-        pose=True,
-        image_ids=test_img_ids,
-        relative_path=relative_path,
-        max_sweeps=max_sweeps)
-    filename = save_path / f'{pkl_prefix}_infos_test.pkl'
-    print(f'Waymo info test file is saved to {filename}')
-    mmcv.dump(waymo_infos_test, filename)
+#     print('Generate info. this may take several minutes.')
+#     if save_path is None:
+#         save_path = Path(data_path)
+#     else:
+#         save_path = Path(save_path)
+#     waymo_infos_train = get_waymo_image_info(
+#         data_path,
+#         training=True,
+#         velodyne=True,
+#         calib=True,
+#         pose=True,
+#         image_ids=train_img_ids,
+#         relative_path=relative_path,
+#         max_sweeps=max_sweeps)
+#     _calculate_num_points_in_gt(
+#         data_path,
+#         waymo_infos_train,
+#         relative_path,
+#         num_features=6,
+#         remove_outside=False)
+#     filename = save_path / f'{pkl_prefix}_infos_train.pkl'
+#     print(f'Waymo info train file is saved to {filename}')
+#     mmcv.dump(waymo_infos_train, filename)
+#     waymo_infos_val = get_waymo_image_info(
+#         data_path,
+#         training=True,
+#         velodyne=True,
+#         calib=True,
+#         pose=True,
+#         image_ids=val_img_ids,
+#         relative_path=relative_path,
+#         max_sweeps=max_sweeps)
+#     _calculate_num_points_in_gt(
+#         data_path,
+#         waymo_infos_val,
+#         relative_path,
+#         num_features=6,
+#         remove_outside=False)
+#     filename = save_path / f'{pkl_prefix}_infos_val.pkl'
+#     print(f'Waymo info val file is saved to {filename}')
+#     mmcv.dump(waymo_infos_val, filename)
+#     filename = save_path / f'{pkl_prefix}_infos_trainval.pkl'
+#     print(f'Waymo info trainval file is saved to {filename}')
+#     mmcv.dump(waymo_infos_train + waymo_infos_val, filename)
+#     waymo_infos_test = get_waymo_image_info(
+#         data_path,
+#         training=False,
+#         label_info=False,
+#         velodyne=True,
+#         calib=True,
+#         pose=True,
+#         image_ids=test_img_ids,
+#         relative_path=relative_path,
+#         max_sweeps=max_sweeps)
+#     filename = save_path / f'{pkl_prefix}_infos_test.pkl'
+#     print(f'Waymo info test file is saved to {filename}')
+#     mmcv.dump(waymo_infos_test, filename)
 
 
 def _create_reduced_point_cloud(data_path,
@@ -369,7 +374,7 @@ def export_2d_annotation(root_path, info_path, mono3d=True):
         coco_infos = get_2d_boxes(info, occluded=[0, 1, 2, 3], mono3d=mono3d)
         (height, width,
          _) = mmcv.imread(osp.join(root_path,
-                                   info['image']['image_path'])).shape
+             info['image']['image_path'])).shape
         coco_2d_dict['images'].append(
             dict(
                 file_name=info['image']['image_path'],
@@ -393,7 +398,6 @@ def export_2d_annotation(root_path, info_path, mono3d=True):
     else:
         json_prefix = f'{info_path[:-4]}'
     mmcv.dump(coco_2d_dict, f'{json_prefix}.coco.json')
-
 
 def get_2d_boxes(info, occluded, mono3d=True):
     """Get the 2D annotation records for a given info.
@@ -443,10 +447,10 @@ def get_2d_boxes(info, occluded, mono3d=True):
         dst = np.array([0.5, 0.5, 0.5])
         src = np.array([0.5, 1.0, 0.5])
         loc = loc + dim * (dst - src)
-        offset = (info['calib']['P2'][0, 3] - info['calib']['P0'][0, 3]) \
-            / info['calib']['P2'][0, 0]
+        # offset = (info['calib']['P2'][0, 3] - info['calib']['P0'][0, 3]) \
+        #     / info['calib']['P2'][0, 0]
         loc_3d = np.copy(loc)
-        loc_3d[0, 0] += offset
+        # loc_3d[0, 0] += offset
         gt_bbox_3d = np.concatenate([loc, dim, rot], axis=1).astype(np.float32)
 
         # Filter out the corners that are not in front of the calibrated
@@ -530,7 +534,6 @@ def get_2d_boxes(info, occluded, mono3d=True):
         repro_recs.append(repro_rec)
 
     return repro_recs
-
 
 def generate_record(ann_rec, x1, y1, x2, y2, sample_data_token, filename):
     """Generate one 2D annotation record given various information on top of
