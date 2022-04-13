@@ -29,7 +29,7 @@ model = dict(
             loss_weight=1.0),
         loss_alpha_reg=dict(type='L1Loss', loss_weight=1.0),
         loss_depth_estimation=dict(
-            weight=0.1,
+            weight=1,
             alpha=0.25,
             gamma=2.0,
             disc_cfg=dict(mode='LID', num_bins=80, depth_min=2.0, depth_max=46.8),

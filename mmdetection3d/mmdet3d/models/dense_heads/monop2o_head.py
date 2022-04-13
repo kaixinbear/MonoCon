@@ -232,6 +232,7 @@ class MonoP2OHead_Wo_P(nn.Module):
         # 2d offset
         offset_pred = self.extract_input_from_tensor(offset_pred, indices, mask_target)
         offset_target = self.extract_target_from_tensor(offset_target, mask_target)
+
         # 2d size
         wh_pred = self.extract_input_from_tensor(wh_pred, indices, mask_target)
         wh_target = self.extract_target_from_tensor(wh_target, mask_target)
@@ -262,10 +263,17 @@ class MonoP2OHead_Wo_P(nn.Module):
         kpt_heatmap_offset_target = kpt_heatmap_offset_target[mask_target]
         mask_kpt_heatmap_offset = self.extract_target_from_tensor(mask_kpt_heatmap_offset, mask_target)
 
+        # 直接算depth gt 的heatmap可能过于稀疏了；先extract 后再计算；
+        # depth_heatmap_pred = self.extract_input_from_tensor(depth_heatmap_pred, indices, mask_target)
+        # depth_heatmap_target = self.extract_target_from_tensor(depth_heatmap_target, mask_target)
+        # print("center_heatmap_target", center_heatmap_target.shape, center_heatmap_target)
+        mask_map = torch.sum(center_heatmap_target, dim=1, keepdim=True)
+        mask_map[mask_map > 0] = 1
+
         # calculate loss
         loss_center_heatmap = self.loss_center_heatmap(center_heatmap_pred, center_heatmap_target)
         loss_kpt_heatmap = self.loss_kpt_heatmap(kpt_heatmap_pred, kpt_heatmap_target)
-        loss_depth_heatmap = self.loss_depth_heatmap(depth_heatmap_pred, depth_heatmap_target)
+        loss_depth_heatmap = self.loss_depth_heatmap(depth_heatmap_pred * mask_map, depth_heatmap_target * mask_map)
         loss_wh = self.loss_wh(wh_pred, wh_target)
         loss_offset = self.loss_offset(offset_pred, offset_target)
         if self.dim_aware_in_loss:
